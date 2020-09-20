@@ -1,0 +1,364 @@
+分页：
+分页是一个网站系统中非常重要也十分常用的功能，在 MVC 开发模式下我们通常是把它放入返回对象中并在页面代码中循环遍历并渲染到页面中，也有通过接口返回，并通过前端插件来实现，这两种方式我们都会介绍到，将其设计为一个通用的分页接口，并将分页数据放到 Result 对象中并通过 json 格式返回。
+分页的作用：
+减少系统资源的消耗，数据查询出来后是放在内存里的，如果在数据量很大的情况下一次性将所有内容都查询出来，会占用过多的内存，通过分页可以减少这种消耗；
+提高性能，应用与数据库间通过网络传输数据，一次传输 10 条数据结果集与一次传输 20000 条数据结果集肯定是传输 10 条消耗更少的网络资源；
+提升访问速度，浏览器与应用间的传输也是通过网络，返回 10 条数据明显那比返回 20000 条数据速度更快，因为数据包的大小有差别；
+符合用户习惯，比如搜索结果或者商品展示，通常用户可能只看最近前 30 条，将所有数据都查询出来比较浪费；
+基于展现层面的考虑，由于设备屏幕的大小比较固定，一个屏幕能够展示的信息并不是特别多，如果一次展现太多的数据，不管是排版还是页面美观度都有影响，一个屏幕的范围就是那么大，展示信息条数有限。
+分页功能的使用可以提升系统性能，也比较符合用户习惯，符合页面设计，这也是为什么大部分系统都会有分页功能。
+分页设计：
+分页参数设计：
+前端分页区比较重要的几个信息是：
+页码展示
+当前页码
+每页条数
+当然，有些页面也会加上首页、尾页、跳转页码等功能，这些信息都根据功能需要和页面设计去做增加和删减。
+
+后端功能设计
+前端页面的工作是渲染数据和分页信息展示，而后端则需要按照前端传输过来的请求将分页所需的数据正确的查询出来并返回给前端，两端的侧重点并不相同，比如前端需要展示所有页码，而后端则只需要提供总页数即可，并不需要对这个总页码进行其他操作，比如前端需要根据用户操作记录当前页码这个参数以便对页码信息进行调整和限制，而后端则并不是这么注重当前页码，只需要接收前端传输过来的页码进行相应的判断和查询操作即可。
+
+对于后端必不可少的是两个参数：
+
+页码(需要第几页的数据)
+每页条数(每次查询多少条数据,一般默认 10 条或者 20 条)
+因为数据库查询语句如下，不同数据库可能关键字有些差别，比如 SQL Server 是通过 top 关键字、Oracle 通过 rownum 关键字，MySQL 实现分页功能基本都是使用 limit 关键字。
+//下面是mysql的实现语句：
+select * from tb_xxxx limit 10,20
+分页功能的最终实现既是如此，通过页码和条数确定数据库需要查询的是从第几条到第几条的数据，比如查询第 1 页每页 20 条数据就是查询数据库中从 0 到 20 条数据，查询第 4 页每页 10 条数据就是查询数据库中第 30 到 40 条数据，因此对于后端来说页码和条数两个参数就显得特别重要，缺少这两个参数根本无法继续之后的查询逻辑，分页数据也就无从查起。
+
+虽然如此，为了前端分页区展示还要将数据总量或者总页数返回给前端，数据总量是必不可少的，因为总页数可以计算出来，即数据总量除以每页条数，数据总量的获取方式：
+select count(*) from tb_xxxx
+之后将数据封装，并返回给前端即可。
+
+新增加数据：
+CREATE TABLE `admin_user` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_name` varchar(50) NOT NULL,
+  `password_md5` varchar(50) NOT NULL,
+  `user_token` varchar(50) NOT NULL,
+  `is_deleted` tinyint(4) DEFAULT '0',
+  `create_time` date NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+INSERT  INTO `admin_user`(`id`,`user_name`,`password_md5`,`user_token`,`is_deleted`,`create_time`) VALUES (1,'admin','e10adc3949ba59abbe56e057f20f883e','d87edfdd63674b9591602b26bfb7f93f',0,'2018-07-04 11:21:14'),(2,'test2','098f6bcd4621d373cade4e832627b4f6','\'\'',0,'2018-07-09 17:22:28'),(3,'test3','098f6bcd4621d373cade4e832627b4f6','\'\'',0,'2018-07-09 17:22:32'),(4,'test4','098f6bcd4621d373cade4e832627b4f6','\'\'',0,'2018-07-09 17:22:32'),(5,'test5','098f6bcd4621d373cade4e832627b4f6','\'\'',0,'2018-07-09 17:22:33'),(6,'test6','098f6bcd4621d373cade4e832627b4f6','\'\'',0,'2018-07-09 17:22:34'),(7,'test7','098f6bcd4621d373cade4e832627b4f6','\'\'',0,'2018-07-09 17:22:35')；
+
+后端分页功能代码：
+AdminUserDao.xml：
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.project.myblog.dao.adminUserMapper">
+  <resultMap id="AdminUserResult" type="com.project.myblog.entity.adminUser">
+    <id column="id" jdbcType="INTEGER" property="id" />
+    <result column="user_name" jdbcType="VARCHAR" property="userName" />
+    <result column="password_md5" jdbcType="VARCHAR" property="passwordMd5" />
+    <result column="user_token" jdbcType="VARCHAR" property="userToken" />
+    <result column="is_deleted" jdbcType="TINYINT" property="isDeleted" />
+    <result column="create_time" jdbcType="DATE" property="createTime" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    id, user_name, password_md5, user_token, is_deleted, create_time
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Integer" resultMap="AdminUserResult">
+    select 
+    <include refid="Base_Column_List" />
+    from admin_user
+    where id = #{id,jdbcType=INTEGER}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Integer">
+    delete from admin_user
+    where id = #{id,jdbcType=INTEGER}
+  </delete>
+  <insert id="insert" parameterType="com.project.myblog.entity.adminUser">
+    insert into admin_user (id, user_name, password_md5, 
+      user_token, is_deleted, create_time
+      )
+    values (#{id,jdbcType=INTEGER}, #{userName,jdbcType=VARCHAR}, #{passwordMd5,jdbcType=VARCHAR},
+      #{userToken,jdbcType=VARCHAR}, #{isDeleted,jdbcType=TINYINT}, #{createTime,jdbcType=DATE}
+      )
+  </insert>
+  <insert id="insertSelective" parameterType="com.project.myblog.entity.adminUser">
+    insert into admin_user
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="userName != null">
+        user_name,
+      </if>
+      <if test="passwordMd5 != null">
+        password_md5,
+      </if>
+      <if test="userToken != null">
+        user_token,
+      </if>
+      <if test="isDeleted != null">
+        is_deleted,
+      </if>
+      <if test="createTime != null">
+        create_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=INTEGER},
+      </if>
+      <if test="userName != null">
+        #{userName,jdbcType=VARCHAR},
+      </if>
+      <if test="passwordMd5 != null">
+        #{passwordMd5,jdbcType=VARCHAR},
+      </if>
+      <if test="userToken != null">
+        #{userToken,jdbcType=VARCHAR},
+      </if>
+      <if test="isDeleted != null">
+        #{isDeleted,jdbcType=TINYINT},
+      </if>
+      <if test="createTime != null">
+        #{createTime,jdbcType=DATE},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.project.myblog.entity.adminUser">
+    update admin_user
+    <set>
+      <if test="userName != null">
+        user_name = #{userName,jdbcType=VARCHAR},
+      </if>
+      <if test="passwordMd5 != null">
+        password_md5 = #{passwordMd5,jdbcType=VARCHAR},
+      </if>
+      <if test="userToken != null">
+        user_token = #{userToken,jdbcType=VARCHAR},
+      </if>
+      <if test="isDeleted != null">
+        is_deleted = #{isDeleted,jdbcType=TINYINT},
+      </if>
+      <if test="createTime != null">
+        create_time = #{createTime,jdbcType=DATE},
+      </if>
+    </set>
+    where id = #{id,jdbcType=INTEGER}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.project.myblog.entity.adminUser">
+    update admin_user
+    set user_name = #{userName,jdbcType=VARCHAR},
+      password_md5 = #{passwordMd5,jdbcType=VARCHAR},
+      user_token = #{userToken,jdbcType=VARCHAR},
+      is_deleted = #{isDeleted,jdbcType=TINYINT},
+      create_time = #{createTime,jdbcType=DATE}
+    where id = #{id,jdbcType=INTEGER}
+  </update>
+
+<!--新增用户记录-->
+  <insert id="addUser" parameterType="com.project.myblog.entity.adminUser">
+        insert into admin_user(user_name,password_md5)
+        values(#{userName},#{passwordMd5})
+    </insert>
+
+<!--  批量新增用户记录-->
+  <insert id="insertUsersBatch">
+    insert into admin_user(user_name,password_md5) VALUES
+    <foreach collection="adminUsers" index="index" item="adminUser" open="" separator="," close="">
+      (#{adminUser.userName}, #{adminUser.passwordMd5})
+    </foreach>
+  </insert>
+
+<!--  根据参数查询用户列表(查询分页中这一页的数据)-->
+  <select id="findAdminUsers" parameterType="Map" resultMap="AdminUserResult">
+    select id,user_name,create_time from admin_user
+    where is_deleted=0
+    order by id asc
+    <if test="start!=null and limit!=null">
+      limit #{start},#{limit}
+    </if>
+  </select>
+
+<!--  查询用户总数-->
+  <select id="getTotalAdminUser" parameterType="Map" resultType="int">
+        select count(*) from admin_user
+        where is_deleted=0
+    </select>
+<!--根据登录名和密码获取用户记录-->
+  <select id="getAdminUserByUserNameAndPassword" resultMap="AdminUserResult">
+  select id,user_name,user_token
+  from admin_user
+        where user_name = #{userName} and password_md5 = #{passwordMd5}
+        and is_deleted = 0
+  ORDER BY  id asc limit 1
+ </select>
+
+<!--  根据userToken获取用户记录-->
+  <select id="getAdminUserByToken" resultMap="AdminUserResult">
+  select id,user_name,user_token
+  from admin_user
+        where user_token = #{userToken}
+        and is_deleted = 0
+  ORDER BY  id asc limit 1
+ </select>
+
+<!--  根据id获取用户记录-->
+  <select id="getAdminUserById" resultMap="AdminUserResult">
+  select user_name,user_token
+  from admin_user
+        where id=#{id}
+        and is_deleted = 0
+  ORDER BY  id asc limit 1
+ </select>
+
+<!--  根据用户名获取用户记录-->
+  <select id="getAdminUserByUserName" resultMap="AdminUserResult">
+  select id,user_name,user_token
+  from admin_user
+        where user_name = #{userName}
+        and is_deleted = 0
+  ORDER BY  id ASC limit 1
+ </select>
+
+<!--  更新用户token值-->
+  <update id="updateUserToken">
+        update admin_user set user_token = #{newToken} where id =#{userId} and is_deleted = 0
+    </update>
+
+<!--  修改密码-->
+  <update id="updateUserPassword">
+        update admin_user set password_md5 = #{newPassword},user_token ='' where id =#{userId} and is_deleted = 0
+    </update>
+
+<!--  批量删除-->
+  <update id="deleteBatch">
+    update admin_user
+    set is_deleted=1 where id in
+    <foreach item="id" collection="array" open="(" separator="," close=")">
+      #{id}
+    </foreach>
+  </update>
+
+<!--  查询用户总数-->
+  <select id="getAllAdminUsers" resultMap="AdminUserResult">
+        select id,user_name,is_deleted,create_time from admin_user
+        order by id asc
+    </select>
+
+</mapper>
+
+
+
+DAO层数据接口实现为：
+package com.project.myblog.dao;
+
+import com.project.myblog.entity.adminUser;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+import java.util.Map;
+
+public interface adminUserMapper {
+    int deleteByPrimaryKey(Integer id);
+
+    int insert(adminUser record);
+
+    int insertSelective(adminUser record);
+
+    adminUser selectByPrimaryKey(Integer id);
+
+    int updateByPrimaryKeySelective(adminUser record);
+
+    int updateByPrimaryKey(adminUser record);
+
+    //根据参数查询用户列表
+    List<adminUser> findAdminUsers(Map param);
+
+    //查询用户总数
+    int getTotalAdminUser(Map param);
+
+    //根据登录名和密码获取用户记录
+    adminUser getAdminUserByUserNameAndPassword(@Param("userName") String userName, @Param("passwordMD5") String passwordMD5);
+
+    //根据userToken获取用户记录
+    adminUser getAdminUserByToken(String userToken);
+
+    //根据id获取用户记录
+    adminUser getAdminUserById(Integer id);
+
+    //根据用户名获取用户记录
+    adminUser getAdminUserByUserName(String userName);
+
+    //新增用户记录
+    int addUser(adminUser user);
+
+    //批量新增用户记录
+    int insertUsersBatch(@Param("adminUsers") List<adminUser> adminUsers);
+
+    //修改密码
+    int updateUserPassword(@Param("userId") Long userId, @Param("newPassword") String newPassword);
+
+    //更新用户token值
+    int updateUserToken(@Param("userId") Integer userId, @Param("newToken") String newToken);
+
+    //批量删除
+    int deleteBatch(Object[] ids);
+
+     //查询所有用户列表
+    List<adminUser> getAllAdminUsers();
+}
+
+其中的dao层的接口和xml文件中的sql语句对应的函数名称一样
+
+Service层（业务层实现）：
+
+接口：
+public interface AdminUserService {
+
+        //分页功能
+        PageResult getAdminUserPage(PageUtil pageUtil)；
+
+}
+
+实现：
+
+@Service("adminuserservice")
+public class AdminUserServiceImpl implements AdminUserService {
+
+    @Autowired
+    private adminUserMapper adminUserDao;
+
+    @Override
+    public PageResult getAdminUserPage(PageUtil pageUtil) {
+        //当前页码中的数据列表
+        List<adminUser> users = adminUserDao.findAdminUsers(pageUtil);
+        //数据总条数 用于计算分页数据
+        int total = adminUserDao.getTotalAdminUser(pageUtil);
+        PageResult pageResult = new PageResult(users, total, pageUtil.getLimit(), pageUtil.getPage());
+        return pageResult;
+    }
+
+实现：是通过传入的是想要得到的页号，以及每一页想要显示的数据数量。获取当前页的数据，然后封装成pageresult的数据格式返回。
+
+controller层实现：
+
+@RestController
+@RequestMapping("/users")
+
+public class AdminUserController{
+
+    @Autowired
+    private AdminUserService adminUserService;
+
+    /**
+     * 列表
+     */
+    @RequestMapping(value = "/list", method = RequestMethod.GET)
+    public Result list(@RequestParam Map<String, Object> params) {
+        if (StringUtils.isEmpty(params.get("page")) || StringUtils.isEmpty(params.get("limit"))) {
+            return ResultGenerator.genErrorResult(Constants.RESULT_CODE_PARAM_ERROR, "参数异常！");
+        }
+        //查询列表数据
+        PageUtil pageUtil = new PageUtil(params);
+        return ResultGenerator.genSuccessResult(adminUserService.getAdminUserPage(pageUtil));
+    }
+」
+
+结果显示：
