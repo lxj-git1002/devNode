@@ -362,3 +362,82 @@ public class AdminUserController{
 」
 
 结果显示：
+
+JqGrid 分页插件介绍
+JqGrid 是一个用来显示网格数据的 jQuery 插件，通过使用 jqGrid 可以轻松实现前端页面与后台数据的 Ajax 异步通信并实现分页功能，特点如下：
+?兼容目前所有流行的 web 浏览器；
+?完善强大的分页功能；
+?支持多种数据格式解析，XML、JSON、数组等形式；
+?提供丰富的选项配置及方法事件接口；
+?支持表格排序，支持拖动列、隐藏列；
+?支持滚动加载数据；
+?开源免费
+
+JqGrid 分页插件整合
+JqGrid 代码压缩包中我们需要的样式文件、js 文件、图片等静态资源放入我们项目的静态资源目录下。之后就可以在各个需要分页的页面中引用该插件资源并实现分页功能了。
+
+整合过程
+1.首先在 html 文件中引入 JqGrid 所需文件：
+<link href="plugins/jqgrid-5.3.0/ui.jqgrid-bootstrap4.css" rel="stylesheet" /><!-- JqGrid依赖jquery，因此需要先引入jquery.min.js文件 --><script src="plugins/jquery/jquery.min.js"></script>
+<script src="plugins/jqgrid-5.3.0/grid.locale-cn.js"></script><script src="plugins/jqgrid-5.3.0/jquery.jqGrid.min.js"></script>
+
+2.在页面中需要展示分页数据的区域添加如下代码，用于 JqGrid 初始化：
+<!-- JqGrid必要DOM,用于创建表格展示列表数据 --><table id="jqGrid" class="table table-bordered"></table><!-- JqGrid必要DOM,分页信息区域 --><div id="jqGridPager"></div>
+
+3.调用 JqGrid 分页插件的 jqGrid() 方法渲染分页展示区域，代码如下：
+$('#jqGrid').jqGrid({
+  url: 'users/list', // 请求后台json数据的url
+  datatype: 'json', // 后台返回的数据格式
+  colModel: [
+    // 列表信息：表头 宽度 是否显示 渲染参数 等属性
+    {
+      label: 'id',
+      name: 'id',
+      index: 'id',
+      width: 50,
+      hidden: true,
+      key: true,
+    },
+    {
+      label: '登录名',
+      name: 'userName',
+      index: 'userName',
+      sortable: false,
+      width: 80,
+    },
+    {
+      label: '添加时间',
+      name: 'createTime',
+      index: 'createTime',
+      sortable: false,
+      width: 80,
+    },
+  ],
+  height: 485, // 表格高度  可自行调节
+  rowNum: 10, // 默认一页显示多少条数据 可自行调节
+  rowList: [10, 30, 50], // 翻页控制条中 每页显示记录数可选集合
+  styleUI: 'Bootstrap', // 主题 这里选用的是Bootstrap主题
+  loadtext: '信息读取中...', // 数据加载时显示的提示信息
+  rownumbers: true, // 是否显示行号，默认值是false，不显示
+  rownumWidth: 35, // 行号列的宽度
+  autowidth: true, // 宽度自适应
+  multiselect: true, // 是否可以多选
+  pager: '#jqGridPager', // 分页信息DOM
+  jsonReader: {
+    root: 'data.list', //数据列表模型
+    page: 'data.currPage', //数据页码
+    total: 'data.totalPage', //数据总页码
+    records: 'data.totalCount', //数据总记录数
+  },
+  // 向后台请求的参数
+  prmNames: {
+    page: 'page',
+    rows: 'limit',
+    order: 'order',
+  },
+  // 数据加载完成并且DOM创建完毕之后的回调函数
+  gridComplete: function () {
+    //隐藏grid底部滚动条
+    $('#jqGrid').closest('.ui-jqgrid-bdiv').css({ 'overflow-x': 'hidden' });
+  },
+});
